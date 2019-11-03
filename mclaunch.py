@@ -73,17 +73,25 @@ def install(cargs):
 					allow = (r['action'] == 'allow')
 				if (not allow): continue
 
+			if ('artifact' in 'downloads'):
+				a = i['downloads']['artifact']
+
+				fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
+				os.makedirs(os.path.dirname(fp), exist_ok=True)
+
+				if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
+				if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
+
 			if ('natives' in i):
-				assert 'classifiers' in i['downloads'] and 'artifact' not in i['downloads']
-				try: i = i['downloads']['classifiers'][i['natives'][Config.platform].replace('${arch}', platform.architecture()[0][:2])]
+				assert 'classifiers' in i['downloads']
+				try: a = i['downloads']['classifiers'][i['natives'][Config.platform].replace('${arch}', platform.architecture()[0][:2])]
 				except KeyError: continue
-			else: i = i['downloads']['artifact']
 
-			fp = os.path.join(Config.mcdir, 'libraries', *i['path'].split('/'))
-			os.makedirs(os.path.dirname(fp), exist_ok=True)
+				fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
+				os.makedirs(os.path.dirname(fp), exist_ok=True)
 
-			if (os.path.isfile(fp) and (os.stat(fp).st_size != i['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != i['sha1'])): os.remove(fp)
-			if (not os.path.isfile(fp)): download(pp, i['url'], fp, i['size'])
+				if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
+				if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
 
 		log("Client")
 
@@ -190,7 +198,7 @@ if (__name__ == '__main__'):
 
 	args_run = subparser.add_parser('run', help="Run client of given Minecraft version.")
 	args_run.add_argument('version', metavar='<version>')
-	args_run.add_argument('username', nargs='?', default='Player')
+	args_run.add_argument('username', nargs='?', default=os.getenv('USER', 'Player'))
 	args_run.set_defaults(func=run)
 
 	argparser.set_defaults(func=lambda *_: sys.exit(argparser.print_help()))
