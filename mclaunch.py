@@ -7,6 +7,7 @@ from utils import *; logstart('MCLaunch')
 class Config:
 	mcdir = os.path.abspath('mclaunch/')
 	version_manifest = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
+	tl_versions = "https://u.tlauncher.ru/repo/versions/versions.json" # TODO
 	download_chunk_size = 2048
 	platform = sys.platform.replace('darwin', 'osx')
 
@@ -30,7 +31,12 @@ def download(pp, url, fp, size=None):
 		for c in pp.iter(r.iter_content(Config.download_chunk_size), size, Config.download_chunk_size):
 			f.write(c)
 
+@apcmd(metavar='<action>')
+@aparg('version', metavar='<version>')
+@aparg('--skip-assets', action='store_true')
+@aparg('--skip-libraries', action='store_true')
 def install(cargs):
+	""" Install given Minecraft version. """
 	ver = requests.get((VersionManifest['versions']@{'id': cargs.version})[0]['url'])
 	ver_json = ver.json()
 	fp = os.path.join(Config.mcdir, 'versions', ver_json['id'], ver_json['id']+'.json')
@@ -43,55 +49,59 @@ def install(cargs):
 	with ThreadedProgressPool() as pp:
 		log("Assets")
 
-		assets = requests.get(ver['assetIndex']['url'])
-		assert (hashlib.sha1(assets.content).hexdigest() == ver['assetIndex']['sha1'])
-		fp = os.path.join(Config.mcdir, 'assets', 'indexes', ver['assetIndex']['id']+'.json')
-		os.makedirs(os.path.dirname(fp), exist_ok=True)
-		open(fp, 'wb').write(assets.content)
-		assets = assets.json()
-
-		for k, v in pp.iter(assets['objects'].items()):
-			fp = os.path.join(Config.mcdir, 'assets', 'objects', v['hash'][:2], v['hash'])
+		if (cargs.skip_assets): log('(skipped)')
+		else:
+			assets = requests.get(ver['assetIndex']['url'])
+			assert (hashlib.sha1(assets.content).hexdigest() == ver['assetIndex']['sha1'])
+			fp = os.path.join(Config.mcdir, 'assets', 'indexes', ver['assetIndex']['id']+'.json')
 			os.makedirs(os.path.dirname(fp), exist_ok=True)
+			open(fp, 'wb').write(assets.content)
+			assets = assets.json()
 
-			if (os.path.isfile(fp) and os.stat(fp).st_size != v['size']): os.remove(fp)
-			if (not os.path.isfile(fp)): download(pp, f"http://resources.download.minecraft.net/{v['hash'][:2]}/{v['hash']}", fp, v['size'])
-			lp = os.path.join(Config.mcdir, 'assets', 'virtual', 'legacy', *k.split('/'))
-			os.makedirs(os.path.dirname(lp), exist_ok=True)
-			if (os.path.isfile(lp) and os.stat(lp).st_size != v['size']): os.remove(lp)
-			if (not os.path.isfile(lp)): os.link(fp, lp)
+			for k, v in pp.iter(assets['objects'].items()):
+				fp = os.path.join(Config.mcdir, 'assets', 'objects', v['hash'][:2], v['hash'])
+				os.makedirs(os.path.dirname(fp), exist_ok=True)
+
+				if (os.path.isfile(fp) and os.stat(fp).st_size != v['size']): os.remove(fp)
+				if (not os.path.isfile(fp)): download(pp, f"http://resources.download.minecraft.net/{v['hash'][:2]}/{v['hash']}", fp, v['size'])
+				lp = os.path.join(Config.mcdir, 'assets', 'virtual', 'legacy', *k.split('/'))
+				os.makedirs(os.path.dirname(lp), exist_ok=True)
+				if (os.path.isfile(lp) and os.stat(lp).st_size != v['size']): os.remove(lp)
+				if (not os.path.isfile(lp)): os.link(fp, lp)
 
 		log("Libraries")
 
-		for i in pp.iter(ver['libraries']):
-			if ('rules' in i):
-				allow = True
-				for r in i['rules']:
-					if ('os' in r):
-						if (r['os']['name'] != Config.platform): continue
-						if ('version' in r['os'] and not re.match(r['os']['version'], platform.release())): continue
-					allow = (r['action'] == 'allow')
-				if (not allow): continue
+		if (cargs.skip_libraries): log('(skipped)')
+		else:
+			for i in pp.iter(ver['libraries']):
+				if ('rules' in i):
+					allow = True
+					for r in i['rules']:
+						if ('os' in r):
+							if (r['os']['name'] != Config.platform): continue
+							if ('version' in r['os'] and not re.match(r['os']['version'], platform.release())): continue
+						allow = (r['action'] == 'allow')
+					if (not allow): continue
 
-			if ('artifact' in 'downloads'):
-				a = i['downloads']['artifact']
+				if ('artifact' in i['downloads']):
+					a = i['downloads']['artifact']
 
-				fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
-				os.makedirs(os.path.dirname(fp), exist_ok=True)
+					fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
+					os.makedirs(os.path.dirname(fp), exist_ok=True)
 
-				if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
-				if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
+					if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
+					if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
 
-			if ('natives' in i):
-				assert 'classifiers' in i['downloads']
-				try: a = i['downloads']['classifiers'][i['natives'][Config.platform].replace('${arch}', platform.architecture()[0][:2])]
-				except KeyError: continue
+				if ('natives' in i):
+					assert 'classifiers' in i['downloads']
+					try: a = i['downloads']['classifiers'][i['natives'][Config.platform].replace('${arch}', platform.architecture()[0][:2])]
+					except KeyError: continue
 
-				fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
-				os.makedirs(os.path.dirname(fp), exist_ok=True)
+					fp = os.path.join(Config.mcdir, 'libraries', *a['path'].split('/'))
+					os.makedirs(os.path.dirname(fp), exist_ok=True)
 
-				if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
-				if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
+					if (os.path.isfile(fp) and (os.stat(fp).st_size != a['size'] or hashlib.sha1(open(fp, 'rb').read()).hexdigest() != a['sha1'])): os.remove(fp)
+					if (not os.path.isfile(fp)): download(pp, a['url'], fp, a['size'])
 
 		log("Client")
 
@@ -104,7 +114,12 @@ def install(cargs):
 
 	log("Installed.")
 
+@apcmd(metavar='<action>')
+@aparg('--snapshot', action='store_true')
+@aparg('--oldalpha', action='store_true')
+@aparg('--oldbeta', action='store_true')
 def list_(cargs):
+	""" List available versions. """
 	types = {'release'}
 	if (cargs.snapshot): types.add('snapshot')
 	if (cargs.oldalpha): types.add('old_alpha')
@@ -115,7 +130,12 @@ def list_(cargs):
 	r = r.group(math.ceil(len(r) / (os.get_terminal_size()[0] // (mw+1))))
 	print(*(' '.join(r[j][i].ljust(mw) for j in range(len(r)) if i < len(r[j])) for i in range(len(r[0]))), sep='\n')
 
+@apcmd(metavar='<action>')
+@aparg('version', metavar='<version>')
+@aparg('-name', metavar='<username>', dest='username', default=os.getenv('USER', 'Player'))
+@aparg('--dont-remove-natives', action='store_true')
 def run(cargs):
+	""" Run client of given Minecraft version. """
 	ver = json.load(open(os.path.join(Config.mcdir, 'versions', cargs.version, cargs.version+'.json')))
 	#pprint(ver)
 
@@ -134,12 +154,14 @@ def run(cargs):
 		'user_type': 'legacy',
 		'user_properties': '{}',
 		'version_name': ver['id'],
+		'version_type': ver['type'],
 	})
 
 	libs = list()
 	natives_dir = os.path.join(Config.mcdir, 'natives')
+	extract_natives = not os.path.isdir(natives_dir)
 
-	log("Exctacting natives...")
+	log("Unpacking natives...")
 
 	try:
 		for i in ver['libraries']:
@@ -152,17 +174,22 @@ def run(cargs):
 					allow = (r['action'] == 'allow')
 				if (not allow): continue
 
+			if ('artifact' in i['downloads']): path = i['downloads']['artifact']['path']
+			else: path = None
+
 			if ('natives' in i):
-				assert 'classifiers' in i['downloads'] and 'artifact' not in i['downloads']
+				assert 'classifiers' in i['downloads']
 				try: path = i['downloads']['classifiers'][i['natives'][Config.platform].replace('${arch}', platform.architecture()[0][:2])]['path']
-				except KeyError: continue
-			else: path = i['downloads']['artifact']['path']
+				except KeyError: pass
+
+			if (path is None): continue
 
 			fp = os.path.join(Config.mcdir, 'libraries', *path.split('/'))
 
 			if ('extract' in i):
-				with zipfile.ZipFile(fp, 'r') as zf:
-					zf.extractall(natives_dir, members=set(zf.namelist())-set(i['extract']['exclude']))
+				if (extract_natives):
+					with zipfile.ZipFile(fp, 'r') as zf:
+						zf.extractall(natives_dir, members=set(zf.namelist())-set(i['extract']['exclude']))
 			else: libs.append(fp)
 
 		# TODO: java path
@@ -171,39 +198,22 @@ def run(cargs):
 		log("Launching.")
 		sys.stderr.write('\n')
 
-		#log(launch_exec, raw=True)
+		log(1, launch_exec, raw=True)
 
 		os.system(launch_exec)
 	finally:
-		assert os.path.commonpath((Config.mcdir, natives_dir)) == Config.mcdir
-		shutil.rmtree(natives_dir)
+		if (extract_natives and not cargs.dont_remove_natives):
+			assert os.path.commonpath((Config.mcdir, natives_dir)) == Config.mcdir
+			shutil.rmtree(natives_dir)
 
+@apmain
+@aparg('--mcdir', metavar='path', help='Minecraft directory', default='~/mclaunch')
 def main(cargs):
+	Config.mcdir = os.path.expanduser(cargs.mcdir)
 	try: return cargs.func(cargs)
-	#except Exception as ex: exception(ex)
 	except KeyboardInterrupt as ex: exit(ex)
 
-if (__name__ == '__main__'):
-	subparser = argparser.add_subparsers(metavar='<action>')
-
-	args_install = subparser.add_parser('install', help="Install given Minecraft version.")
-	args_install.add_argument('version', metavar='<version>')
-	args_install.set_defaults(func=install)
-
-	args_list = subparser.add_parser('list', help="List available versions.")
-	args_list.add_argument('--snapshot', action='store_true')
-	args_list.add_argument('--oldalpha', action='store_true')
-	args_list.add_argument('--oldbeta', action='store_true')
-	args_list.set_defaults(func=list_)
-
-	args_run = subparser.add_parser('run', help="Run client of given Minecraft version.")
-	args_run.add_argument('version', metavar='<version>')
-	args_run.add_argument('username', nargs='?', default=os.getenv('USER', 'Player'))
-	args_run.set_defaults(func=run)
-
-	argparser.set_defaults(func=lambda *_: sys.exit(argparser.print_help()))
-	cargs = argparser.parse_args()
-	logstarted(); exit(main(cargs))
+if (__name__ == '__main__'): exit(main())
 else: logimported()
 
 # by Sdore, 2019
