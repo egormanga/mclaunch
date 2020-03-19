@@ -133,6 +133,7 @@ def list_(cargs):
 @apcmd(metavar='<action>')
 @aparg('version', metavar='<version>')
 @aparg('-name', metavar='<username>', dest='username', default=os.getenv('USER', 'Player'))
+@aparg('-class', metavar='<main class>', dest='main_class', nargs='?')
 @aparg('--dont-remove-natives', action='store_true')
 def run(cargs):
 	""" Run client of given Minecraft version. """
@@ -141,21 +142,6 @@ def run(cargs):
 
 	log(f"Starting Minecraft version {ver['id']}")
 
-	uuid_ = uuid.uuid3(uuid.NAMESPACE_OID, cargs.username).hex
-	args = re.sub(r'\$({.*?})', r'\1', ver['minecraftArguments']).format_map({
-		'auth_player_name': cargs.username,
-		'auth_session': f"token:{uuid_}:{uuid_}",
-		'auth_uuid': uuid_,
-		'auth_access_token': uuid_,
-		'game_directory': Config.mcdir,
-		'game_assets': os.path.join(Config.mcdir, 'assets', 'virtual', 'legacy'),
-		'assets_root': os.path.join(Config.mcdir, 'assets'),
-		'assets_index_name': ver['assetIndex']['id'],
-		'user_type': 'legacy',
-		'user_properties': '{}',
-		'version_name': ver['id'],
-		'version_type': ver['type'],
-	})
 
 	libs = list()
 	natives_dir = os.path.join(Config.mcdir, 'natives')
@@ -192,8 +178,36 @@ def run(cargs):
 						zf.extractall(natives_dir, members=set(zf.namelist())-set(i['extract']['exclude']))
 			else: libs.append(fp)
 
+		main_class = cargs.main_class if (cargs.main_class is not None) else ver['mainClass']
+
+		uuid_ = uuid.uuid3(uuid.NAMESPACE_OID, cargs.username).hex
+		argmap = {
+			'auth_player_name': cargs.username,
+			'auth_session': f"token:{uuid_}:{uuid_}",
+			'auth_uuid': uuid_,
+			'auth_access_token': uuid_,
+			'game_directory': Config.mcdir,
+			'game_assets': os.path.join(Config.mcdir, 'assets', 'virtual', 'legacy'),
+			'assets_root': os.path.join(Config.mcdir, 'assets'),
+			'assets_index_name': ver['assetIndex']['id'],
+			'classpath': f"{os.path.pathsep.join(libs)}:{os.path.join(Config.mcdir, 'versions', ver['id'], ver['id']+'.jar')}",
+			'natives_directory': natives_dir,
+			'launcher_name': 'mclaunch',
+			'launcher_version': '',
+			'user_type': 'legacy',
+			'user_properties': '{}',
+			'version_name': ver['id'],
+			'version_type': ver['type'],
+		}
+
+		try: jvm_args = re.sub(r'\$({.*?})', r'\1', ' '.join(i for i in ver['arguments']['jvm'] if isinstance(i, str))).format_map(argmap)
+		except KeyError: jvm_args = f"-Djava.library.path='{argmap['natives_directory']}' -cp '{argmap['classpath']}'"
+		try: argstring = ' '.join(i for i in ver['arguments']['game'] if isinstance(i, str)) # TODO
+		except KeyError: argstring = ver['minecraftArguments'] # TODO FIXME
+		game_args = re.sub(r'\$({.*?})', r'\1', argstring).format_map(argmap)
+
 		# TODO: java path
-		launch_exec = f"java -Djava.library.path='{natives_dir}' -cp '{os.path.pathsep.join(libs)}:{os.path.join(Config.mcdir, 'versions', ver['id'], ver['id']+'.jar')}' {ver['mainClass']} {args}"
+		launch_exec = f"java {jvm_args} {main_class} {game_args}"
 
 		log("Launching.")
 		sys.stderr.write('\n')
