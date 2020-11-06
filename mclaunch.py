@@ -5,7 +5,7 @@ import uuid
 from utils import *; logstart('MCLaunch')
 
 class Config:
-	mcdir = os.path.abspath('mclaunch/')
+	mcdir = os.path.expanduser('~/.minecraft/')
 	version_manifest = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
 	tl_versions = "https://u.tlauncher.ru/repo/versions/versions.json" # TODO
 	download_chunk_size = 2048
@@ -37,6 +37,10 @@ def download(pp, url, fp, size=None):
 @aparg('--skip-libraries', action='store_true')
 def install(cargs):
 	""" Install given Minecraft version. """
+
+	if (cargs.version == 'latest'): cargs.version = VersionManifest['latest']['release']
+	elif (cargs.version == 'latest-snapshot'): cargs.version = VersionManifest['latest']['snapshot']
+
 	ver = requests.get((VersionManifest['versions']@{'id': cargs.version})[0]['url'])
 	ver_json = ver.json()
 	fp = os.path.join(Config.mcdir, 'versions', ver_json['id'], ver_json['id']+'.json')
@@ -46,7 +50,7 @@ def install(cargs):
 
 	log(f"Downloading Minecraft version {ver['id']}")
 
-	with ThreadedProgressPool() as pp:
+	with ThreadedProgressPool(fixed=True, add_base=True, add_speed_eta=True) as pp:
 		log("Assets")
 
 		if (cargs.skip_assets): log('(skipped)')
@@ -120,6 +124,7 @@ def install(cargs):
 @aparg('--oldbeta', action='store_true')
 def list_(cargs):
 	""" List available versions. """
+
 	types = {'release'}
 	if (cargs.snapshot): types.add('snapshot')
 	if (cargs.oldalpha): types.add('old_alpha')
@@ -137,6 +142,10 @@ def list_(cargs):
 @aparg('--dont-remove-natives', action='store_true')
 def run(cargs):
 	""" Run client of given Minecraft version. """
+
+	if (cargs.version == 'latest'): cargs.version = VersionManifest['latest']['release']
+	elif (cargs.version == 'latest-snapshot'): cargs.version = VersionManifest['latest']['snapshot']
+
 	ver = json.load(open(os.path.join(Config.mcdir, 'versions', cargs.version, cargs.version+'.json')))
 	#pprint(ver)
 
@@ -230,4 +239,4 @@ def main(cargs):
 if (__name__ == '__main__'): exit(main())
 else: logimported()
 
-# by Sdore, 2019
+# by Sdore, 2020
