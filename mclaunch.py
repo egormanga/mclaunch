@@ -230,7 +230,7 @@ def run(cargs):
 			shutil.rmtree(natives_dir)
 
 @apmain
-@aparg('--mcdir', metavar='path', help='Minecraft directory', default='~/mclaunch')
+@aparg('--mcdir', metavar='path', help='Minecraft directory', default='~/.minecraft')
 def main(cargs):
 	Config.mcdir = os.path.expanduser(cargs.mcdir)
 	try: return cargs.func(cargs)
