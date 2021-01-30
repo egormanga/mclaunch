@@ -28,7 +28,7 @@ def download(pp, url, fp, size=None):
 	assert (int(r.raw.getheader('Content-Length', 0)) or size) == size
 
 	with open(fp, 'wb') as f:
-		for c in pp.iter(r.iter_content(Config.download_chunk_size), size, Config.download_chunk_size):
+		for c in pp.iter(r.iter_content(Config.download_chunk_size), size, Config.download_chunk_size, add_base=(1024, ('B', 'KiB', 'MiB', 'GiB', 'TiB'))):
 			f.write(c)
 
 @apcmd(metavar='<action>')
@@ -239,4 +239,4 @@ def main(cargs):
 if (__name__ == '__main__'): exit(main())
 else: logimported()
 
-# by Sdore, 2020
+# by Sdore, 2021
