@@ -1,1 +1,2 @@
-mclaunch.py
+from .mclaunch import main
+exit(main())

@@ -2,8 +2,9 @@
 # MCLaunch
 
 import uuid
-from utils import *; logstart('MCLaunch')
+from utils.nolog import *
 
+@export
 class Config:
 	mcdir = os.path.expanduser('~/.minecraft/')
 	version_manifest = "https://launchermeta.mojang.com/mc/game/version_manifest.json"
@@ -11,6 +12,7 @@ class Config:
 	download_chunk_size = 2048
 	platform = sys.platform.replace('darwin', 'osx')
 
+@export
 @singleton
 class VersionManifest:
 	def __getitem__(self, x):
@@ -20,6 +22,7 @@ class VersionManifest:
 	def json(self):
 		return requests.get(Config.version_manifest).json()
 
+@export
 @dispatch
 def download(pp, url, fp, size=None):
 	r = requests.get(url, stream=True)
@@ -230,13 +233,10 @@ def run(cargs):
 			shutil.rmtree(natives_dir)
 
 @apmain
-@aparg('--mcdir', metavar='path', help='Minecraft directory', default='~/.minecraft')
+@aparg('--mcdir', metavar='path', help="Minecraft directory", default='~/.minecraft')
 def main(cargs):
 	Config.mcdir = os.path.expanduser(cargs.mcdir)
 	try: return cargs.func(cargs)
 	except KeyboardInterrupt as ex: exit(ex)
 
-if (__name__ == '__main__'): exit(main())
-else: logimported()
-
-# by Sdore, 2021
+# by Sdore, 2019-2022
