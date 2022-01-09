@@ -1,2 +1,2 @@
-from .mclaunch import main
+from .mclaunch import exit, main
 exit(main())
