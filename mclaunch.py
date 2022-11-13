@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # MCLaunch
 
-import uuid
+import uuid, requests
 from utils.nolog import *
 
 @export
